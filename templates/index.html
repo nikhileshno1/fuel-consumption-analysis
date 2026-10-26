@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fuel Consumption Analysis System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header class="header">
+        <div>
+            <h1>Fuel Consumption Analysis</h1>
+            <p>Record fuel purchases, calculate mileage and compare vehicle efficiency</p>
+        </div>
+    </header>
+
+    <nav class="navigation">
+        <button class="nav-link active" data-page="dashboard">Dashboard</button>
+        <button class="nav-link" data-page="vehicles">Vehicles</button>
+        <button class="nav-link" data-page="fuel-records">Fuel Records</button>
+        <button class="nav-link" data-page="analytics">Analytics</button>
+        <button class="nav-link" data-page="invalid">Invalid Readings <span id="invalid-badge" class="count-badge" hidden>0</span></button>
+    </nav>
+
+    <main class="container">
+        <div id="message" class="message" hidden></div>
+
+        <!-- Dashboard -->
+        <section id="dashboard" class="page-section active">
+            <h2>Dashboard</h2>
+            <div class="stats-container">
+                <div class="stat-card"><h3>Total Vehicles</h3><p id="dash-vehicles">0</p></div>
+                <div class="stat-card"><h3>Fuel Records</h3><p id="dash-records">0</p></div>
+                <div class="stat-card"><h3>Total Fuel</h3><p id="dash-litres">0 L</p></div>
+                <div class="stat-card"><h3>Total Cost</h3><p id="dash-cost">₹0.00</p></div>
+            </div>
+            <div class="stats-container">
+                <div class="stat-card"><h3>Mileage <span class="badge badge-full">Full-tank</span></h3><p id="dash-mileage">N/A</p></div>
+                <div class="stat-card"><h3>Cost per km <span class="badge badge-full">Full-tank</span></h3><p id="dash-cost-km">N/A</p></div>
+                <div class="stat-card"><h3>Avg Price per Litre</h3><p id="dash-price">N/A</p></div>
+                <div class="stat-card"><h3>Invalid Readings</h3><p id="dash-invalid">0</p></div>
+            </div>
+            <h3>Recent Fuel Records</h3>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Date</th><th>Vehicle</th><th>Fuel</th><th>Cost</th></tr></thead>
+                    <tbody id="recent-records"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Vehicles -->
+        <section id="vehicles" class="page-section">
+            <h2>Vehicle Management</h2>
+            <form id="vehicle-form" class="form-card">
+                <label for="vehicle-code">Vehicle Code</label>
+                <input id="vehicle-code" required maxlength="30" placeholder="e.g. CAR001">
+
+                <label for="vehicle-type">Vehicle Type</label>
+                <select id="vehicle-type" required>
+                    <option value="">Select type</option>
+                    <option>Car</option><option>Bike</option><option>Truck</option>
+                    <option>Bus</option><option>Other</option>
+                </select>
+
+                <label for="fuel-type">Fuel Type</label>
+                <select id="fuel-type" required>
+                    <option value="">Select fuel</option>
+                    <option>Petrol</option><option>Diesel</option><option>CNG</option>
+                    <option>Electric</option><option>Hybrid</option>
+                </select>
+
+                <button type="submit">Add Vehicle</button>
+            </form>
+
+            <h3>Registered Vehicles</h3>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>ID</th><th>Vehicle Code</th><th>Type</th><th>Fuel Type</th><th></th></tr></thead>
+                    <tbody id="vehicles-list"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Fuel records -->
+        <section id="fuel-records" class="page-section">
+            <h2>Fuel Records</h2>
+            <form id="fuel-form" class="form-card">
+                <label for="record-vehicle">Vehicle</label>
+                <select id="record-vehicle" required></select>
+
+                <label for="fill-date">Fill Date</label>
+                <input type="date" id="fill-date" required>
+
+                <label for="odometer">Odometer Reading (km)</label>
+                <input type="number" id="odometer" min="0" step="0.01" required>
+
+                <label for="litres">Fuel Quantity (litres)</label>
+                <input type="number" id="litres" min="0.001" step="0.001" required>
+
+                <label for="total-cost">Total Cost (₹)</label>
+                <input type="number" id="total-cost" min="0" step="0.01" required>
+
+                <label class="checkbox-label">
+                    <input type="checkbox" id="full-tank" checked>
+                    Tank filled to full
+                </label>
+                <p class="hint">Untick this for a partial fill. Accurate mileage is only calculated between two full-tank fills.
+                Odometer readings must increase with the fill date, and litres must be above zero.</p>
+
+                <button type="submit">Add Fuel Record</button>
+            </form>
+
+            <h3>Fuel History</h3>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th><th>Vehicle</th><th>Odometer</th><th>Litres</th><th>Cost</th>
+                            <th>Fill</th><th>Distance</th><th>Mileage</th><th>Basis</th><th>Status</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="fuel-list"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Analytics -->
+        <section id="analytics" class="page-section">
+            <h2>Fuel Analytics</h2>
+
+            <div class="note">
+                <strong>How mileage is calculated</strong>
+                <ul>
+                    <li><span class="badge badge-full">Full-tank</span> Distance between two full-tank fills divided by all fuel bought after the first fill, up to and including the second. Partial fills in between are added to the fuel total. This is the accurate figure.</li>
+                    <li><span class="badge badge-approx">Approximate</span> Distance between two valid readings divided by the litres bought at the later fill. It assumes fuel bought equals fuel burned, so partial fills make it unreliable. Use it only as a rough guide.</li>
+                    <li>An invalid reading breaks the chain: no distance or mileage is calculated across it. Expense totals still include any record with positive litres and a non-negative cost.</li>
+                </ul>
+            </div>
+
+            <div class="stats-container">
+                <div class="stat-card"><h3>Distance (valid readings)</h3><p id="analytics-distance">0 km</p></div>
+                <div class="stat-card"><h3>Mileage <span class="badge badge-full">Full-tank</span></h3><p id="analytics-mileage">N/A</p></div>
+                <div class="stat-card"><h3>Mileage <span class="badge badge-approx">Approx.</span></h3><p id="analytics-approx">N/A</p></div>
+                <div class="stat-card"><h3>Cost per km <span class="badge badge-full">Full-tank</span></h3><p id="analytics-cost-km">N/A</p></div>
+            </div>
+
+            <div class="section-head">
+                <h3>Vehicle-wise Mileage Report</h3>
+                <a class="btn-small" href="/api/export/vehicle-mileage.csv">Download CSV</a>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Rank</th><th>Vehicle</th><th>Fuel Type</th><th>Full-tank Segments</th>
+                            <th>Full-tank km/L</th><th>Full-tank ₹/km</th>
+                            <th>Approx. km/L</th><th>Approx. ₹/km</th><th>Invalid</th>
+                        </tr>
+                    </thead>
+                    <tbody id="vehicle-analytics"></tbody>
+                </table>
+            </div>
+
+            <div class="section-head">
+                <h3>Fuel Expense Summary</h3>
+                <a class="btn-small" href="/api/export/monthly-summary.csv">Download monthly CSV</a>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr><th>Vehicle</th><th>Records</th><th>Fuel (L)</th><th>Cost (₹)</th><th>Avg ₹/L</th><th>Full-tank distance (km)</th></tr>
+                    </thead>
+                    <tbody id="expense-analytics"></tbody>
+                </table>
+            </div>
+
+            <h3>Monthly Fuel Report</h3>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Month</th><th>Records</th><th>Fuel (L)</th><th>Cost (₹)</th><th>Avg ₹/L</th>
+                            <th>Full-tank km/L</th><th>Full-tank ₹/km</th><th>Approx. km/L</th>
+                        </tr>
+                    </thead>
+                    <tbody id="monthly-analytics"></tbody>
+                </table>
+            </div>
+
+            <h3>Month-wise Full-tank Mileage by Vehicle (km/L)</h3>
+            <div class="table-wrapper">
+                <table>
+                    <thead id="pivot-head"></thead>
+                    <tbody id="pivot-body"></tbody>
+                </table>
+            </div>
+
+            <div class="section-head">
+                <h3>Full-tank Segments</h3>
+                <a class="btn-small" href="/api/export/full-tank-segments.csv">Download CSV</a>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr><th>Vehicle</th><th>From</th><th>To</th><th>Distance (km)</th><th>Fuel (L)</th><th>Partial fills</th><th>km/L</th><th>₹/km</th></tr>
+                    </thead>
+                    <tbody id="segment-list"></tbody>
+                </table>
+            </div>
+
+            <div class="section-head"><h3>Visual Analysis</h3></div>
+            <div id="charts" class="chart-grid"></div>
+        </section>
+
+        <!-- Invalid readings -->
+        <section id="invalid" class="page-section">
+            <div class="section-head">
+                <h2>Invalid Reading Report</h2>
+                <a class="btn-small" href="/api/export/invalid-readings.csv">Download CSV</a>
+            </div>
+            <p>These records are left out of distance and mileage calculations. Delete the record and add a corrected one to fix it.</p>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr><th>Vehicle</th><th>Date</th><th>Odometer</th><th>Litres</th><th>Cost</th><th>Fill</th><th>Reason</th><th></th></tr>
+                    </thead>
+                    <tbody id="invalid-list"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <footer><p>Fuel Consumption Analysis System</p></footer>
+
+    <script>
+        const money = value => "₹" + Number(value || 0).toLocaleString("en-IN", {
+            minimumFractionDigits: 2, maximumFractionDigits: 2
+        });
+        const number = value => Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+        const orNA = (value, format = number, suffix = "") =>
+            value === null || value === undefined ? "N/A" : format(value) + suffix;
+
+        const esc = value => String(value ?? "").replace(/[&<>"']/g, ch => (
+            { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+
+        const basisBadge = basis =>
+            basis === "Full-tank" ? '<span class="badge badge-full">Full-tank</span>'
+            : basis === "Approximate" ? '<span class="badge badge-approx">Approximate</span>' : "";
+
+        let messageTimer;
+        function showMessage(text, isError = false) {
+            const element = document.getElementById("message");
+            element.textContent = text;
+            element.className = isError ? "message error" : "message success";
+            element.hidden = false;
+            clearTimeout(messageTimer);
+            messageTimer = setTimeout(() => element.hidden = true, 5000);
+        }
+
+        async function api(url, options = {}) {
+            const response = await fetch(url, {
+                ...options,
+                headers: { "Content-Type": "application/json", ...(options.headers || {}) }
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "Something went wrong.");
+            return data;
+        }
+
+        function showPage(pageId) {
+            document.querySelectorAll(".page-section").forEach(section =>
+                section.classList.toggle("active", section.id === pageId));
+            document.querySelectorAll(".nav-link").forEach(link =>
+                link.classList.toggle("active", link.dataset.page === pageId));
+
+            if (pageId === "dashboard") loadDashboard();
+            if (pageId === "vehicles") loadVehicles();
+            if (pageId === "fuel-records") { loadVehicles(); loadFuelRecords(); }
+            if (pageId === "analytics") loadAnalytics();
+            if (pageId === "invalid") loadInvalid();
+        }
+
+        document.querySelectorAll(".nav-link").forEach(button =>
+            button.addEventListener("click", () => showPage(button.dataset.page)));
+
+        function setInvalidBadge(count) {
+            const badge = document.getElementById("invalid-badge");
+            badge.textContent = count;
+            badge.hidden = !count;
+        }
+
+        async function loadDashboard() {
+            try {
+                const [analytics, records] = await Promise.all([api("/api/analytics"), api("/api/fuel-records")]);
+                const t = analytics.totals;
+                document.getElementById("dash-vehicles").textContent = t.total_vehicles;
+                document.getElementById("dash-records").textContent = t.total_records;
+                document.getElementById("dash-litres").textContent = number(t.total_litres) + " L";
+                document.getElementById("dash-cost").textContent = money(t.total_cost);
+                document.getElementById("dash-mileage").textContent = orNA(t.fulltank_mileage, number, " km/L");
+                document.getElementById("dash-cost-km").textContent = orNA(t.fulltank_cost_per_km, money);
+                document.getElementById("dash-price").textContent = orNA(t.avg_price_per_litre, money);
+                document.getElementById("dash-invalid").textContent = t.invalid_records;
+                setInvalidBadge(t.invalid_records);
+
+                document.getElementById("recent-records").innerHTML =
+                    records.slice(0, 5).map(r => `
+                        <tr>
+                            <td>${esc(r.fill_date)}</td><td>${esc(r.vehicle_code)}</td>
+                            <td>${number(r.litres)} L</td><td>${money(r.total_cost)}</td>
+                        </tr>`).join("") || '<tr><td colspan="4">No fuel records yet.</td></tr>';
+            } catch (error) { showMessage(error.message, true); }
+        }
+
+        async function deleteItem(url, label, reload) {
+            if (!confirm(`Delete this ${label}? This cannot be undone.`)) return;
+            try {
+                const data = await api(url, { method: "DELETE" });
+                showMessage(data.message);
+                await reload();
+                loadDashboard();
+            } catch (error) { showMessage(error.message, true); }
+        }
+
+        async function loadVehicles() {
+            try {
+                const vehicles = await api("/api/vehicles");
+
+                document.getElementById("vehicles-list").innerHTML =
+                    vehicles.map(v => `
+                        <tr>
+                            <td>${v.vehicle_id}</td><td>${esc(v.vehicle_code)}</td>
+                            <td>${esc(v.vehicle_type)}</td><td>${esc(v.fuel_type)}</td>
+                            <td><button class="btn-small btn-danger"
+                                onclick="deleteItem('/api/vehicles/${v.vehicle_id}', 'vehicle', loadVehicles)">Delete</button></td>
+                        </tr>`).join("") || '<tr><td colspan="5">No vehicles added yet.</td></tr>';
+
+                const select = document.getElementById("record-vehicle");
+                const previousValue = select.value;
+                select.innerHTML = '<option value="">Select vehicle</option>' +
+                    vehicles.map(v => `<option value="${v.vehicle_id}">${esc(v.vehicle_code)} (${esc(v.fuel_type)})</option>`).join("");
+                if (vehicles.some(v => String(v.vehicle_id) === previousValue)) select.value = previousValue;
+            } catch (error) { showMessage(error.message, true); }
+        }
+
+        document.getElementById("vehicle-form").addEventListener("submit", async event => {
+            event.preventDefault();
+            try {
+                await api("/api/vehicles", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        vehicle_code: document.getElementById("vehicle-code").value.trim(),
+                        vehicle_type: document.getElementById("vehicle-type").value,
+                        fuel_type: document.getElementById("fuel-type").value
+                    })
+                });
+                event.target.reset();
+                showMessage("Vehicle added successfully.");
+                await loadVehicles();
+                await loadDashboard();
+            } catch (error) { showMessage(error.message, true); }
+        });
+
+        async function loadFuelRecords() {
+            try {
+                const records = await api("/api/fuel-records");
+                document.getElementById("fuel-list").innerHTML =
+                    records.map(r => `
+                        <tr class="${r.status === "invalid" ? "row-invalid" : ""}">
+                            <td>${esc(r.fill_date)}</td>
+                            <td>${esc(r.vehicle_code)}</td>
+                            <td>${number(r.odometer_km)} km</td>
+                            <td>${number(r.litres)} L</td>
+                            <td>${money(r.total_cost)}</td>
+                            <td>${r.full_tank_flag ? "Full" : "Partial"}</td>
+                            <td>${r.distance == null ? "—" : number(r.distance) + " km"}</td>
+                            <td>${r.mileage == null ? "—" : number(r.mileage) + " km/L"}</td>
+                            <td>${basisBadge(r.basis)}</td>
+                            <td>${r.status === "invalid"
+                                ? `<span class="badge badge-invalid" title="${esc(r.reason)}">Invalid</span>`
+                                : "Valid"}</td>
+                            <td><button class="btn-small btn-danger"
+                                onclick="deleteItem('/api/fuel-records/${r.record_id}', 'fuel record', loadFuelRecords)">Delete</button></td>
+                        </tr>`).join("") || '<tr><td colspan="11">No fuel records yet.</td></tr>';
+            } catch (error) { showMessage(error.message, true); }
+        }
+
+        document.getElementById("fuel-form").addEventListener("submit", async event => {
+            event.preventDefault();
+            try {
+                await api("/api/fuel-records", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        vehicle_id: document.getElementById("record-vehicle").value,
+                        fill_date: document.getElementById("fill-date").value,
+                        odometer_km: document.getElementById("odometer").value,
+                        litres: document.getElementById("litres").value,
+                        total_cost: document.getElementById("total-cost").value,
+                        full_tank_flag: document.getElementById("full-tank").checked
+                    })
+                });
+                event.target.reset();
+                document.getElementById("fill-date").value = new Date().toISOString().slice(0, 10);
+                document.getElementById("full-tank").checked = true;
+                showMessage("Fuel record added successfully.");
+                await loadVehicles();
+                await loadFuelRecords();
+                await loadDashboard();
+            } catch (error) { showMessage(error.message, true); }
+        });
+
+        async function loadAnalytics() {
+            try {
+                const data = await api("/api/analytics");
+                const t = data.totals;
+                setInvalidBadge(t.invalid_records);
+
+                document.getElementById("analytics-distance").textContent = number(t.total_distance) + " km";
+                document.getElementById("analytics-mileage").textContent = orNA(t.fulltank_mileage, number, " km/L");
+                document.getElementById("analytics-approx").textContent = orNA(t.approx_mileage, number, " km/L");
+                document.getElementById("analytics-cost-km").textContent = orNA(t.fulltank_cost_per_km, money);
+
+                document.getElementById("vehicle-analytics").innerHTML =
+                    data.vehicles.map(v => `
+                        <tr>
+                            <td>${v.rank ?? "—"}</td>
+                            <td>${esc(v.vehicle_code)}</td>
+                            <td>${esc(v.fuel_type)}</td>
+                            <td>${v.fulltank_segments}</td>
+                            <td>${orNA(v.fulltank_mileage)}</td>
+                            <td>${orNA(v.fulltank_cost_per_km, money)}</td>
+                            <td>${orNA(v.approx_mileage)}</td>
+                            <td>${orNA(v.approx_cost_per_km, money)}</td>
+                            <td>${v.invalid_records}</td>
+                        </tr>`).join("") || '<tr><td colspan="9">No data available.</td></tr>';
+
+                document.getElementById("expense-analytics").innerHTML =
+                    data.vehicles.map(v => `
+                        <tr>
+                            <td>${esc(v.vehicle_code)}</td><td>${v.records}</td>
+                            <td>${number(v.total_litres)}</td><td>${money(v.total_cost)}</td>
+                            <td>${orNA(v.avg_price_per_litre, money)}</td>
+                            <td>${number(v.fulltank_distance)}</td>
+                        </tr>`).join("") +
+                    `<tr class="total-row"><td>All vehicles</td><td>${t.total_records}</td>
+                        <td>${number(t.total_litres)}</td><td>${money(t.total_cost)}</td>
+                        <td>${orNA(t.avg_price_per_litre, money)}</td><td>${number(t.fulltank_distance)}</td></tr>`;
+
+                document.getElementById("monthly-analytics").innerHTML =
+                    data.monthly.map(m => `
+                        <tr>
+                            <td>${esc(m.month)}</td><td>${m.records}</td>
+                            <td>${number(m.total_litres)}</td><td>${money(m.total_cost)}</td>
+                            <td>${orNA(m.avg_price_per_litre, money)}</td>
+                            <td>${orNA(m.fulltank_mileage)}</td>
+                            <td>${orNA(m.fulltank_cost_per_km, money)}</td>
+                            <td>${orNA(m.approx_mileage)}</td>
+                        </tr>`).join("") || '<tr><td colspan="8">No monthly data available.</td></tr>';
+
+                const pivot = data.monthly_vehicle_mileage;
+                document.getElementById("pivot-head").innerHTML =
+                    "<tr><th>Month</th>" + pivot.vehicles.map(c => `<th>${esc(c)}</th>`).join("") + "</tr>";
+                document.getElementById("pivot-body").innerHTML =
+                    pivot.months.map((month, i) =>
+                        `<tr><td>${esc(month)}</td>${pivot.values[i].map(v => `<td>${orNA(v)}</td>`).join("")}</tr>`
+                    ).join("") || `<tr><td>No data available.</td></tr>`;
+
+                document.getElementById("segment-list").innerHTML =
+                    data.segments.map(s => `
+                        <tr>
+                            <td>${esc(s.vehicle_code)}</td><td>${esc(s.start_date)}</td><td>${esc(s.end_date)}</td>
+                            <td>${number(s.distance)}</td><td>${number(s.litres)}</td>
+                            <td>${s.partial_fills}</td><td>${orNA(s.mileage)}</td>
+                            <td>${orNA(s.cost_per_km, money)}</td>
+                        </tr>`).join("") ||
+                    '<tr><td colspan="8">No complete full-tank segments yet. Two full-tank fills are needed.</td></tr>';
+
+                await loadCharts();
+            } catch (error) { showMessage(error.message, true); }
+        }
+
+        const CHARTS = [
+            ["monthly_cost", "Monthly Fuel Cost"],
+            ["monthly_fuel", "Monthly Fuel Consumption"],
+            ["monthly_mileage", "Monthly Mileage Trend"],
+            ["vehicle_mileage", "Vehicle Mileage Comparison"],
+            ["vehicle_cost_per_km", "Fuel Cost per km"],
+            ["vehicle_cost", "Vehicle-wise Fuel Cost"]
+        ];
+
+        async function loadCharts() {
+            try {
+                const charts = await api("/api/analytics/charts");
+                document.getElementById("charts").innerHTML = CHARTS.map(([key, title]) => `
+                    <figure class="chart-tile ${key === "monthly_mileage" ? "wide" : ""}">
+                        <figcaption>${title}</figcaption>
+                        <img alt="${title} chart" src="data:image/png;base64,${charts[key]}">
+                    </figure>`).join("");
+            } catch (error) { showMessage("Could not load charts: " + error.message, true); }
+        }
+
+        async function loadInvalid() {
+            try {
+                const data = await api("/api/analytics");
+                const rows = data.invalid_readings;
+                setInvalidBadge(rows.length);
+                document.getElementById("invalid-list").innerHTML =
+                    rows.map(r => `
+                        <tr>
+                            <td>${esc(r.vehicle_code)}</td><td>${esc(r.fill_date)}</td>
+                            <td>${number(r.odometer_km)} km</td><td>${number(r.litres)} L</td>
+                            <td>${money(r.total_cost)}</td><td>${r.full_tank ? "Full" : "Partial"}</td>
+                            <td class="wrap">${esc(r.reason)}</td>
+                            <td><button class="btn-small btn-danger"
+                                onclick="deleteItem('/api/fuel-records/${r.record_id}', 'fuel record', loadInvalid)">Delete</button></td>
+                        </tr>`).join("") || '<tr><td colspan="8">No invalid readings found.</td></tr>';
+            } catch (error) { showMessage(error.message, true); }
+        }
+
+        document.getElementById("fill-date").value = new Date().toISOString().slice(0, 10);
+        loadDashboard();
+    </script>
+</body>
+</html>
