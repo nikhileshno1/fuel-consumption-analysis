@@ -5,3 +5,4 @@
 __pycache__/
 *.py[cod]
 .vercel/
+schema_aiven.sql
